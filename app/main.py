@@ -3,7 +3,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from app import ledger
+from app import ledger, payouts
 
 app = FastAPI(title="Ledgerly")
 
@@ -40,5 +40,19 @@ def get_account(account_id: str):
 def transfer(body: TransferIn):
     try:
         return ledger.transfer(body.from_account, body.to_account, body.amount_cents, body.reference)
+    except ledger.LedgerError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+
+
+class PayoutIn(BaseModel):
+    amount: float = Field(gt=0)
+    iban: str = Field(min_length=15, max_length=34)
+    reference: str = Field(min_length=1, max_length=64)
+
+
+@app.post("/accounts/{account_id}/payouts", status_code=202)
+def payout(account_id: str, body: PayoutIn):
+    try:
+        return payouts.request_payout(account_id, body.amount, body.iban, body.reference)
     except ledger.LedgerError as err:
         raise HTTPException(status_code=400, detail=str(err))
