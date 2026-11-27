@@ -97,7 +97,7 @@ def test_unset_operator_token_refuses_everyone(monkeypatch):
 
 
 def test_non_ascii_token_is_401_not_500():
-    assert post(100, headers={"Authorization": "Bearer tést"}).status_code == 401
+    assert post(100, headers={"Authorization": "Bearer t\u00e9st"}).status_code == 401
 
 
 def test_concurrent_refunds_never_exceed_the_payment():
