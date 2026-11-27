@@ -23,7 +23,11 @@ def reset() -> None:
 
 
 def record_payment(payment_id: str, account_id: str, amount_cents: int, iban: str) -> None:
-    """Remembers a card payment so it can be refunded later."""
+    """Remembers a card payment so it can be refunded later. A payment is recorded once."""
+    if payment_id in _payments:
+        raise RefundError("payment already recorded", 409)
+    if ledger.get_account(account_id) is None:
+        raise RefundError("unknown account", 404)
     _payments[payment_id] = {"account": account_id, "amount_cents": amount_cents, "iban": iban, "reversed": False, "refunded_cents": 0, "by_request": {}}
 
 
@@ -46,6 +50,8 @@ def refund(payment_id: str, amount_cents: int, operator: str, request_id: str) -
         payment = _payment(payment_id)
         done = payment["by_request"].get(request_id)
         if done is not None:
+            if done["amount_cents"] != amount_cents:
+                raise RefundError("request_id already used for a different amount", 409)
             return done
         if not payment["reversed"]:
             raise RefundError("payment has not been reversed", 409)

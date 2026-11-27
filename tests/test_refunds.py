@@ -120,3 +120,27 @@ def test_payments_are_recorded_and_reversed_through_the_api():
     assert client.post("/payments/pay-9/reversed", headers=AUTH).status_code == 200
     assert post(700, payment_id="pay-9").status_code == 201
     assert client.post("/payments/nope/reversed", headers=AUTH).status_code == 404
+
+
+def test_reused_request_id_with_another_amount_is_rejected():
+    assert post(1_000, request_id="same").status_code == 201
+    assert post(900, request_id="same").status_code == 409
+    assert ledger.balance("alice") == 1_000
+
+
+def test_request_id_is_required():
+    res = client.post("/refunds", json={"payment_id": "pay-1", "amount_cents": 100, "request_id": ""}, headers=AUTH)
+    assert res.status_code == 422
+
+
+def test_a_payment_is_recorded_once_and_needs_a_known_account():
+    body = {"payment_id": "pay-1", "account_id": "alice", "amount_cents": 700, "iban": IBAN}
+    assert client.post("/payments", json=body, headers=AUTH).status_code == 409
+    body = {"payment_id": "pay-7", "account_id": "carol", "amount_cents": 700, "iban": IBAN}
+    assert client.post("/payments", json=body, headers=AUTH).status_code == 404
+
+
+def test_payment_endpoints_need_the_operator_token():
+    body = {"payment_id": "pay-8", "account_id": "alice", "amount_cents": 700, "iban": IBAN}
+    assert client.post("/payments", json=body).status_code == 401
+    assert client.post("/payments/pay-1/reversed").status_code == 401

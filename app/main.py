@@ -72,7 +72,10 @@ def require_operator(authorization: str = Header(default="")) -> str:
 @app.post("/payments", status_code=201)
 def record_payment(body: PaymentIn, operator: str = Depends(require_operator)):
     """The card provider's capture, recorded so it can be refunded later."""
-    refunds.record_payment(body.payment_id, body.account_id, body.amount_cents, body.iban)
+    try:
+        refunds.record_payment(body.payment_id, body.account_id, body.amount_cents, body.iban)
+    except refunds.RefundError as err:
+        raise HTTPException(status_code=err.status, detail=str(err))
     return {"payment_id": body.payment_id}
 
 
