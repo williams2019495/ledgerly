@@ -1,6 +1,9 @@
 """Ledgerly: a double-entry ledger service for wallets and payouts."""
 
-from fastapi import FastAPI, HTTPException
+import os
+import secrets
+
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app import ledger, refunds
@@ -46,10 +49,21 @@ def transfer(body: TransferIn):
 
 class RefundIn(BaseModel):
     payment_id: str
-    amount: float = Field(gt=0)
-    requested_by: str
+    amount_cents: int = Field(gt=0)
+
+
+def require_operator(authorization: str = Header(default="")) -> str:
+    """Refunds are for support staff only: they send the operator token from LEDGERLY_OPERATOR_TOKEN."""
+    expected = os.environ.get("LEDGERLY_OPERATOR_TOKEN", "")
+    given = authorization.removeprefix("Bearer ")
+    if not expected or not secrets.compare_digest(given, expected):
+        raise HTTPException(status_code=401, detail="operator token required")
+    return "operator"
 
 
 @app.post("/refunds", status_code=201)
-def refund(body: RefundIn):
-    return refunds.refund(body.payment_id, body.amount, body.requested_by)
+def refund(body: RefundIn, operator: str = Depends(require_operator)):
+    try:
+        return refunds.refund(body.payment_id, body.amount_cents, operator)
+    except refunds.RefundError as err:
+        raise HTTPException(status_code=err.status, detail=str(err))
