@@ -144,3 +144,9 @@ def test_payment_endpoints_need_the_operator_token():
     body = {"payment_id": "pay-8", "account_id": "alice", "amount_cents": 700, "iban": IBAN}
     assert client.post("/payments", json=body).status_code == 401
     assert client.post("/payments/pay-1/reversed").status_code == 401
+
+
+def test_request_id_longer_than_64_characters_is_rejected():
+    res = client.post("/refunds", json={"payment_id": "pay-1", "amount_cents": 100, "request_id": "r" * 65}, headers=AUTH)
+    assert res.status_code == 422
+    assert ledger.balance("alice") == 0
