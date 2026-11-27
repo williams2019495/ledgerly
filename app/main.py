@@ -50,20 +50,44 @@ def transfer(body: TransferIn):
 class RefundIn(BaseModel):
     payment_id: str
     amount_cents: int = Field(gt=0)
+    request_id: str = Field(min_length=1, max_length=64)
+
+
+class PaymentIn(BaseModel):
+    payment_id: str = Field(min_length=1, max_length=64)
+    account_id: str
+    amount_cents: int = Field(gt=0)
+    iban: str = Field(min_length=5, max_length=34)
 
 
 def require_operator(authorization: str = Header(default="")) -> str:
     """Refunds are for support staff only: they send the operator token from LEDGERLY_OPERATOR_TOKEN."""
     expected = os.environ.get("LEDGERLY_OPERATOR_TOKEN", "")
     given = authorization.removeprefix("Bearer ")
-    if not expected or not secrets.compare_digest(given, expected):
+    if not expected or not secrets.compare_digest(given.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(status_code=401, detail="operator token required")
     return "operator"
+
+
+@app.post("/payments", status_code=201)
+def record_payment(body: PaymentIn, operator: str = Depends(require_operator)):
+    """The card provider's capture, recorded so it can be refunded later."""
+    refunds.record_payment(body.payment_id, body.account_id, body.amount_cents, body.iban)
+    return {"payment_id": body.payment_id}
+
+
+@app.post("/payments/{payment_id}/reversed")
+def payment_reversed(payment_id: str, operator: str = Depends(require_operator)):
+    try:
+        refunds.mark_reversed(payment_id)
+    except refunds.RefundError as err:
+        raise HTTPException(status_code=err.status, detail=str(err))
+    return {"payment_id": payment_id, "reversed": True}
 
 
 @app.post("/refunds", status_code=201)
 def refund(body: RefundIn, operator: str = Depends(require_operator)):
     try:
-        return refunds.refund(body.payment_id, body.amount_cents, operator)
+        return refunds.refund(body.payment_id, body.amount_cents, operator, body.request_id)
     except refunds.RefundError as err:
         raise HTTPException(status_code=err.status, detail=str(err))
